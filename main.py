@@ -19,30 +19,14 @@ def load_shaders(vert_url, frag_url):
 def load_cubemap(folder_url):
     tex_id = glGenTextures(1)
     face_order = ["right", "left", "top", "bottom", "back", "front"]
-    """
-    #hack that fixes issues for ./images1/
-    face_order = ["right", "left", "top", "bottom", "front", "back"]
-    """
     face_urls = sorted(glob.glob(folder_url + "*"))
     glActiveTexture(GL_TEXTURE0)
     glBindTexture(GL_TEXTURE_CUBE_MAP, tex_id)
     for i, face in enumerate(face_order):
         face_url = [face_url for face_url in face_urls if face in face_url.lower()][0]
         face_image = pygame.image.load(face_url).convert()
-        """
-        #hack that fixes issues for ./images2/
-        if face == "bottom":
-            face_image = pygame.transform.rotate(face_image, 270)
-        if face == "top":
-            face_image = pygame.transform.rotate(face_image, 90)
-        """
-        """
-        #hack that fixes issues for ./images3/
-        if face == "bottom" or face == "top":
-            face_image = pygame.transform.rotate(face_image, 180)
-        """
-        face_surface = pygame.image.tostring(face_image, 'RGB')
         face_width, face_height = face_image.get_size()
+        face_surface = pygame.image.tostring(face_image, 'RGB')
         glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, face_width, face_height, 0, GL_RGB, GL_UNSIGNED_BYTE, face_surface)
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
@@ -53,8 +37,8 @@ def load_cubemap(folder_url):
     return tex_id
 
 def render():
-    global width, height, program
-    global rotation, cubemap
+    global width, height, program, cubemap
+    global rotation_x, rotation_y, fov
     
     glEnable(GL_DEPTH_TEST)
     glEnable(GL_TEXTURE_2D)
@@ -78,12 +62,11 @@ def render():
     
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluPerspective(60, float(width)/height, 0.1, 1000)
+    gluPerspective(fov, float(width)/height, 0.1, 1000)
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
-    #glRotate(rotation, 0, 1, 0)#spin around y axis
-    #glRotate(rotation, 1, 0, 0)#spin around x axis
-    glRotate(rotation, 1, 1, 1)#rotate around x, y, and z axes
+    glRotate(rotation_y, 1, 0, 0)
+    glRotate(rotation_x, 0, 1, 0)
     
     glUseProgram(program)
     glDepthMask(GL_FALSE)
@@ -101,39 +84,54 @@ def render():
     pygame.display.flip()
 
 if __name__ == "__main__":
-    title = "Skybox"
+    title = "Skybox Demo"
     target_fps = 60
     (width, height) = (800, 600)
     flags = pygame.DOUBLEBUF|pygame.OPENGL
     screen = pygame.display.set_mode((width, height), flags)
     prev_time = time.time()
-    rotation = 0
-    #cubemap = load_cubemap("./images1/")#front and back images appear swapped
-    cubemap = load_cubemap("./images2/")#top and bottom images appear rotated by 90 and 270 degrees respectively
-    #cubemap = load_cubemap("./images3/")#top and bottom images appear rotated by 180 degrees
+    rotation_x = 0
+    rotation_y = 0
+    rotation_step = 1
+    cubemap = load_cubemap("./images2/")
     program = load_shaders("./shaders/skybox.vert", "./shaders/skybox.frag")
-    pause = False
+    
+    moving = [False, False, False, False]
+    arrows = [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN]
+    fov = 60
+    fov_step = 10
+    fov_range = (30, 150)
     
     while True:
-        #Handle the events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
             elif event.type == pygame.KEYDOWN:
+                try:
+                    moving[arrows.index(event.key)] = True
+                except:
+                    pass
                 if event.key == pygame.K_SPACE:
-                    pause = not pause
-            
-        #Do computations and render stuff on screen
-        if not pause:
-            rotation += 1
+                    fov += fov_step
+                    fov_min, fov_max = fov_range
+                    if fov > fov_max:
+                        fov = fov_min
+            elif event.type == pygame.KEYUP:
+                try:
+                    moving[arrows.index(event.key)] = False
+                except:
+                    pass
+        
+        rotation_x += rotation_step*(moving[1] - moving[0])
+        rotation_x %= 360
+        rotation_y += rotation_step*(moving[3] - moving[2])
+        rotation_y %= 360
         render()
         
-        #Handle timing code for desired FPS
         curr_time = time.time()
         diff = curr_time - prev_time
         delay = max(1.0/target_fps - diff, 0)
         time.sleep(delay)
         fps = 1.0/(delay + diff)
         prev_time = curr_time
-        pygame.display.set_caption("{0}: {1:.2f}".format(title, fps))
-    
+        pygame.display.set_caption("{0}, FPS: {1:.0f} Yaw: {2}, Pitch: {3}, FOV: {4}".format(title, fps, rotation_x, rotation_y, fov))
